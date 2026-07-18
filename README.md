@@ -1,5 +1,11 @@
 # Customer Churn Analysis
-### Problem:
+
+### Table of Content
+- [What is Customer Churn](#What-is-Customer-Churn)
+- [Analysis](#Analysis)
+
+
+## What is Customer Churn:
 As a Business and Strategy Analyst, articulating the concept of "Customer Churn" necessitates a perspective that transcends a mere operational metric. Customer churn represents the **"value leakage"** within your business model. 
 
 ---
