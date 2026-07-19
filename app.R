@@ -1,9 +1,10 @@
 # ============================================================
 # SHINY DASHBOARD FOR CUSTOMER CHURN ANALYTICS
-# Version: 2.0 (Fixed)
 # ============================================================
 
+# Load all required libraries
 library(shiny)
+library(shinydashboard)  # This is critical for valueBox
 library(DT)
 library(plotly)
 library(tidyverse)
@@ -15,7 +16,6 @@ library(janitor)
 # DATA PREPARATION
 # ============================================================
 
-# Load and clean data
 telco_data <- read_csv("data.csv") %>%
   clean_names()
 
@@ -27,11 +27,9 @@ telco_clean <- telco_data %>%
   ) %>%
   select(-customer_id)
 
-# Prepare data for modeling
 model_data <- telco_clean %>%
   mutate(across(where(is.character), as.factor))
 
-# Train the model
 set.seed(123)
 train_index <- createDataPartition(model_data$churn, p = 0.8, list = FALSE)
 train_data <- model_data[train_index, ]
@@ -45,25 +43,29 @@ churn_model <- randomForest(
   na.action = na.roughfix
 )
 
-# Generate predictions and probabilities (FIXED VERSION)
 churn_probs <- predict(churn_model, model_data, type = "prob")
 
 model_data_scored <- model_data %>%
   mutate(
-    churn_probability = churn_probs[, "Churn"],  # FIXED: Use matrix indexing
+    churn_probability = churn_probs[, "Churn"],
     predicted_churn = predict(churn_model, model_data)
   )
 
 # ============================================================
-# SHINY UI
+# UI
 # ============================================================
 
-ui <- fluidPage(
-  titlePanel("Customer Churn Analytics Dashboard"),
+ui <- dashboardPage(
+  dashboardHeader(title = "Churn Analytics"),
   
-  sidebarLayout(
-    sidebarPanel(
-      h4("Filters"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
+      menuItem("Model Performance", tabName = "model", icon = icon("cogs")),
+      menuItem("High-Risk Customers", tabName = "highrisk", icon = icon("exclamation-triangle")),
+      menuItem("Interactive Analysis", tabName = "interactive", icon = icon("chart-line")),
+      hr(),
+      h4("Filters", style = "color: white; padding-left: 15px;"),
       
       selectInput("contract_filter", "Contract Type:",
                   choices = c("All", unique(telco_clean$contract)),
@@ -72,74 +74,75 @@ ui <- fluidPage(
       sliderInput("tenure_range", "Tenure (Months):",
                   min = 0, max = 72, value = c(0, 72)),
       
-      sliderInput("probability_threshold", "Churn Probability Threshold:",
-                  min = 0.5, max = 0.95, value = 0.70, step = 0.05),
+      sliderInput("probability_threshold", "Churn Probability:",
+                  min = 0.5, max = 0.95, value = 0.70, step = 0.05)
+    )
+  ),
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "overview",
+              fluidRow(
+                valueBoxOutput("total_customers", width = 4),
+                valueBoxOutput("churn_rate", width = 4),
+                valueBoxOutput("high_risk_count", width = 4)
+              ),
+              fluidRow(
+                box(title = "Churn Rate by Contract", status = "primary", solidHeader = TRUE,
+                    width = 6, plotlyOutput("plot_contract")),
+                box(title = "Tenure Distribution", status = "primary", solidHeader = TRUE,
+                    width = 6, plotlyOutput("plot_tenure"))
+              ),
+              fluidRow(
+                box(title = "Monthly vs Total Charges", status = "info", solidHeader = TRUE,
+                    width = 12, plotlyOutput("plot_charges"), height = "500px")
+              )
+      ),
       
-      hr(),
-      p("Built with Shiny & R"),
-      p("Data: Telco Customer Churn")
-    ),
-    
-    mainPanel(
-      tabsetPanel(
-        
-        # TAB 1: OVERVIEW
-        tabPanel("Overview",
-                 fluidRow(
-                   valueBoxOutput("total_customers"),
-                   valueBoxOutput("churn_rate"),
-                   valueBoxOutput("high_risk_count")
-                 ),
-                 hr(),
-                 fluidRow(
-                   column(6, plotlyOutput("plot_contract")),
-                   column(6, plotlyOutput("plot_tenure"))
-                 ),
-                 fluidRow(
-                   column(12, plotlyOutput("plot_charges"))
-                 )
-        ),
-        
-        # TAB 2: MODEL PERFORMANCE
-        tabPanel("Model Performance",
-                 h3("Confusion Matrix"),
-                 tableOutput("conf_matrix"),
-                 hr(),
-                 h3("Key Metrics"),
-                 verbatimTextOutput("model_metrics"),
-                 hr(),
-                 h3("Variable Importance"),
-                 plotlyOutput("plot_importance")
-        ),
-        
-        # TAB 3: HIGH-RISK CUSTOMERS
-        tabPanel("High-Risk Customers",
-                 h3("Customers with High Churn Probability"),
-                 p("Filter and export the list of customers at risk of churning."),
-                 hr(),
-                 DTOutput("high_risk_table"),
-                 hr(),
-                 downloadButton("download_high_risk", "Download CSV")
-        ),
-        
-        # TAB 4: INTERACTIVE ANALYSIS
-        tabPanel("Interactive Analysis",
-                 h3("Interactive Scatter Plot"),
-                 p("Hover over points to see details. Use zoom and pan."),
-                 plotlyOutput("interactive_scatter", height = "600px")
-        )
+      tabItem(tabName = "model",
+              fluidRow(
+                box(title = "Confusion Matrix", status = "success", solidHeader = TRUE,
+                    width = 6, tableOutput("conf_matrix")),
+                box(title = "Key Metrics", status = "success", solidHeader = TRUE,
+                    width = 6, verbatimTextOutput("model_metrics"))
+              ),
+              fluidRow(
+                box(title = "Top 10 Variables Driving Churn", status = "warning", solidHeader = TRUE,
+                    width = 12, plotlyOutput("plot_importance"), height = "500px")
+              )
+      ),
+      
+      tabItem(tabName = "highrisk",
+              fluidRow(
+                box(title = "High-Risk Customers List", status = "danger", solidHeader = TRUE,
+                    width = 12,
+                    p("Filter and export customers at risk of churning."),
+                    DTOutput("high_risk_table"),
+                    hr(),
+                    downloadButton("download_high_risk", "Download CSV", class = "btn-primary")
+                )
+              )
+      ),
+      
+      tabItem(tabName = "interactive",
+              fluidRow(
+                box(title = "Interactive Scatter Plot", status = "info", solidHeader = TRUE,
+                    width = 12,
+                    p("Hover over points to see details. Use zoom and pan."),
+                    plotlyOutput("interactive_scatter", height = "600px")
+                )
+              )
       )
     )
   )
 )
 
 # ============================================================
-# SHINY SERVER
+# SERVER
 # ============================================================
 
 server <- function(input, output, session) {
   
-  # Reactive filtered data
   filtered_data <- reactive({
     data <- model_data_scored
     
@@ -152,28 +155,26 @@ server <- function(input, output, session) {
     return(data)
   })
   
-  # High-risk customers based on threshold
   high_risk_data <- reactive({
     filtered_data() %>%
       filter(churn_probability >= input$probability_threshold) %>%
       arrange(desc(churn_probability))
   })
   
-  # VALUE BOXES
   output$total_customers <- renderValueBox({
     valueBox(
-      nrow(filtered_data()),
-      "Total Customers",
+      value = nrow(filtered_data()),
+      subtitle = "Total Customers",
       icon = icon("users"),
-      color = "blue"
+      color = "aqua"
     )
   })
   
   output$churn_rate <- renderValueBox({
     rate <- mean(filtered_data()$churn == "Churn") * 100
     valueBox(
-      paste0(round(rate, 1), "%"),
-      "Churn Rate",
+      value = paste0(round(rate, 1), "%"),
+      subtitle = "Churn Rate",
       icon = icon("chart-line"),
       color = "red"
     )
@@ -181,20 +182,19 @@ server <- function(input, output, session) {
   
   output$high_risk_count <- renderValueBox({
     valueBox(
-      nrow(high_risk_data()),
-      "High-Risk Customers",
+      value = nrow(high_risk_data()),
+      subtitle = "High-Risk Customers",
       icon = icon("exclamation-triangle"),
-      color = "orange"
+      color = "yellow"
     )
   })
   
-  # PLOTS
   output$plot_contract <- renderPlotly({
     p <- filtered_data() %>%
       ggplot(aes(x = contract, fill = churn)) +
       geom_bar(position = "fill") +
       scale_fill_manual(values = c("No_Churn" = "#2ca02c", "Churn" = "#d62728")) +
-      labs(title = "Churn Rate by Contract", x = "Contract", y = "Proportion") +
+      labs(title = NULL, x = "Contract", y = "Proportion") +
       theme_minimal()
     ggplotly(p)
   })
@@ -204,7 +204,7 @@ server <- function(input, output, session) {
       ggplot(aes(x = tenure, fill = churn)) +
       geom_density(alpha = 0.6) +
       scale_fill_manual(values = c("No_Churn" = "#2ca02c", "Churn" = "#d62728")) +
-      labs(title = "Tenure Distribution", x = "Tenure (Months)", y = "Density") +
+      labs(title = NULL, x = "Tenure (Months)", y = "Density") +
       theme_minimal()
     ggplotly(p)
   })
@@ -214,7 +214,7 @@ server <- function(input, output, session) {
       ggplot(aes(x = monthly_charges, y = total_charges, color = churn)) +
       geom_point(alpha = 0.5) +
       scale_color_manual(values = c("No_Churn" = "#2ca02c", "Churn" = "#d62728")) +
-      labs(title = "Monthly vs Total Charges", x = "Monthly Charges", y = "Total Charges") +
+      labs(title = NULL, x = "Monthly Charges", y = "Total Charges") +
       theme_minimal()
     ggplotly(p)
   })
@@ -229,7 +229,7 @@ server <- function(input, output, session) {
     p <- ggplot(var_imp_df, aes(x = reorder(Variable, MeanDecreaseGini), y = MeanDecreaseGini)) +
       geom_bar(stat = "identity", fill = "#3366cc") +
       coord_flip() +
-      labs(title = "Top 10 Variables Driving Churn", x = "Variable", y = "Importance") +
+      labs(title = NULL, x = "Variable", y = "Importance") +
       theme_minimal()
     ggplotly(p)
   })
@@ -250,13 +250,12 @@ server <- function(input, output, session) {
       marker = list(size = 8, opacity = 0.6)
     ) %>%
       layout(
-        title = "Interactive: Monthly vs Total Charges",
+        title = NULL,
         xaxis = list(title = "Monthly Charges"),
         yaxis = list(title = "Total Charges")
       )
   })
   
-  # MODEL PERFORMANCE
   output$conf_matrix <- renderTable({
     predictions <- predict(churn_model, test_data)
     conf_matrix <- confusionMatrix(predictions, test_data$churn, positive = "Churn")
@@ -274,7 +273,6 @@ server <- function(input, output, session) {
     cat("F1-Score:", round(conf_matrix$byClass['F1'], 4), "\n")
   })
   
-  # HIGH-RISK TABLE
   output$high_risk_table <- renderDT({
     datatable(
       high_risk_data() %>%
@@ -287,7 +285,6 @@ server <- function(input, output, session) {
       formatCurrency(c("monthly_charges", "total_charges"), "$")
   })
   
-  # DOWNLOAD HANDLER
   output$download_high_risk <- downloadHandler(
     filename = function() {
       paste("high_risk_customers_", Sys.Date(), ".csv", sep = "")
@@ -299,7 +296,7 @@ server <- function(input, output, session) {
 }
 
 # ============================================================
-# RUN THE APP
+# RUN APP
 # ============================================================
 
 shinyApp(ui = ui, server = server)
