@@ -1,6 +1,0 @@
-#!/home/mr/Pro/Projects/BA/Customer_churn_analysis/.vnev/bin/python3
-import sys
-from jupyter_events.cli import main
-if __name__ == '__main__':
-    sys.argv[0] = sys.argv[0].removesuffix('.exe')
-    sys.exit(main())
